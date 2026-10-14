@@ -1983,8 +1983,307 @@ body {
 }
 
 /* ==========================================================================
+   WELCOME LANDING & HERO SECTION (DEFAULT ZERO-WALLET STATE)
+   ========================================================================== */
+
+.clear-input-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.clear-input-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.welcome-hero-container {
+  margin: 12px 0 36px 0;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-hero-card {
+  background: var(--arcus-card);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 48px 36px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(232, 221, 190, 0.45), transparent);
+}
+
+.welcome-hero-top {
+  max-width: 760px;
+  margin: 0 auto 36px auto;
+}
+
+.welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(30, 59, 37, 0.4);
+  border: 1px solid rgba(162, 238, 58, 0.3);
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d1fae5;
+  letter-spacing: 0.03em;
+  margin-bottom: 18px;
+}
+
+.welcome-title {
+  font-size: 38px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: #f5f2eb;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+
+.highlight-sand {
+  color: var(--arcus-sand);
+  text-shadow: 0 0 25px rgba(232, 221, 190, 0.25);
+  font-style: italic;
+}
+
+.welcome-desc {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 auto;
+}
+
+.welcome-features-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 36px;
+  text-align: left;
+}
+
+.welcome-feat-item {
+  background: rgba(15, 20, 13, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 22px 18px;
+  transition: all 0.25s ease;
+}
+
+.welcome-feat-item:hover {
+  background: rgba(23, 31, 20, 0.85);
+  border-color: var(--border-light);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.feat-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(232, 221, 190, 0.05);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.welcome-feat-item h4 {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #f8fafc;
+  margin-bottom: 6px;
+}
+
+.welcome-feat-item p {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Demo Wallets Box */
+.welcome-demo-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.demo-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.demo-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-box-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sand);
+}
+
+.btn-view-leaderboard {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.btn-view-leaderboard:hover {
+  color: var(--arcus-sand);
+}
+
+.demo-cards-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.demo-trader-card {
+  background: rgba(232, 221, 190, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.demo-trader-card:hover {
+  background: rgba(232, 221, 190, 0.08);
+  border-color: rgba(232, 221, 190, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.demo-trader-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.demo-trader-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.demo-trader-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--arcus-lime);
+}
+
+.demo-trader-addr {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.demo-trader-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--arcus-sand);
+  margin-top: 4px;
+}
+
+.welcome-trust-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Loading State Card */
+.loading-state-card {
+  background: var(--arcus-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 64px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.loading-state-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.loading-state-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-width: 500px;
+}
+
+.hover-sand:hover {
+  color: var(--arcus-sand) !important;
+  border-color: rgba(232, 221, 190, 0.3) !important;
+}
+
+/* ==========================================================================
    RESPONSIVE DESIGN (TABLETS & PHONES)
    ========================================================================== */
+
+@media (max-width: 990px) {
+  .welcome-features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .demo-cards-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 @media (max-width: 900px) {
   .main-content {
@@ -2012,6 +2311,15 @@ body {
 }
 
 @media (max-width: 640px) {
+  .welcome-title {
+    font-size: 26px;
+  }
+  .welcome-features-grid {
+    grid-template-columns: 1fr;
+  }
+  .welcome-hero-card {
+    padding: 28px 18px;
+  }
   .nav-content {
     flex-direction: column;
     align-items: flex-start;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Wallet, 
@@ -17,10 +17,10 @@ import {
   Activity, 
   AlertCircle,
   TrendingUp,
-  Sliders,
   Sparkles,
   ClipboardPaste,
-  Globe
+  X,
+  ArrowRight
 } from 'lucide-react';
 
 import { 
@@ -29,8 +29,7 @@ import {
   fetchCompleteWalletDashboard, 
   fetchLiveMarkets, 
   isValidAddress, 
-  truncateAddress, 
-  formatUSD 
+  truncateAddress 
 } from './services/arcusApi';
 
 import MetricCards from './components/MetricCards';
@@ -51,18 +50,28 @@ export default function App() {
   const network = NETWORKS[networkKey];
 
   // Address input and active address state
-  const [inputAddress, setInputAddress] = useState('');
-  const [activeAddress, setActiveAddress] = useState(() => {
-    // Check URL parameters for ?address=0x...
+  // Default is completely empty unless ?address=0x... is explicitly in URL
+  const [inputAddress, setInputAddress] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const urlAddr = params.get('address');
     if (urlAddr && isValidAddress(urlAddr)) return urlAddr;
-    return FEATURED_WALLETS[0].address; // Default to #1 Whale
+    return '';
+  });
+
+  const [activeAddress, setActiveAddress] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlAddr = params.get('address');
+    if (urlAddr && isValidAddress(urlAddr)) return urlAddr;
+    return ''; // Default to no wallet loaded
   });
 
   // Dashboard dataset & loading states
   const [dashboardData, setDashboardData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlAddr = params.get('address');
+    return Boolean(urlAddr && isValidAddress(urlAddr));
+  });
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -71,7 +80,7 @@ export default function App() {
   const [liveMarkets, setLiveMarkets] = useState([]);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'positions' | 'trades' | 'orders' | 'funding' | 'transfers'
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Modals
   const [feeModalOpen, setFeeModalOpen] = useState(false);
@@ -81,17 +90,25 @@ export default function App() {
   const [copiedShare, setCopiedShare] = useState(false);
   const [copiedAddr, setCopiedAddr] = useState(false);
 
-  // Sync address to input field on initial mount
-  useEffect(() => {
-    setInputAddress(activeAddress);
-  }, [activeAddress]);
-
-  // Sync browser URL query parameter
+  // Sync address to input field when activeAddress changes
   useEffect(() => {
     if (activeAddress) {
-      const url = new URL(window.location);
+      setInputAddress(activeAddress);
+    }
+  }, [activeAddress]);
+
+  // Sync browser URL query parameter: remove ?address if empty, set ?address if valid
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeAddress) {
       url.searchParams.set('address', activeAddress);
-      window.history.replaceState({}, '', url);
+      window.history.replaceState({}, '', url.toString());
+    } else {
+      url.searchParams.delete('address');
+      const cleanUrl = url.searchParams.toString() 
+        ? `${url.pathname}?${url.searchParams.toString()}` 
+        : url.pathname;
+      window.history.replaceState({}, '', cleanUrl);
     }
   }, [activeAddress]);
 
@@ -120,9 +137,8 @@ export default function App() {
       setLoading(false);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
-      // Determine user-friendly error message
       if (err.status === 403) {
-        setError(`Address ${truncateAddress(addrToLoad)} has not been registered on Arcus or access is restricted. Try selecting one of the featured active traders above.`);
+        setError(`Address ${truncateAddress(addrToLoad)} has not been registered on Arcus or access is restricted. Try selecting one of the featured active traders.`);
       } else {
         setError(err.message || 'Error communicating with Arcus API. Please check your network or try again.');
       }
@@ -132,12 +148,18 @@ export default function App() {
 
   // Trigger load on address or network change
   useEffect(() => {
-    loadDashboard(activeAddress, true);
+    if (activeAddress) {
+      loadDashboard(activeAddress, true);
+    } else {
+      setDashboardData(null);
+      setLoading(false);
+      setError(null);
+    }
   }, [activeAddress, networkKey, loadDashboard]);
 
-  // Auto-refresh interval (every 15s)
+  // Auto-refresh interval (every 15s) only when active address exists
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || !activeAddress) return;
     const interval = setInterval(() => {
       loadDashboard(activeAddress, false);
     }, 15000);
@@ -148,10 +170,16 @@ export default function App() {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     const clean = inputAddress.trim();
+    if (!clean) {
+      setActiveAddress('');
+      setError('Please paste or type an Ethereum or Robinhood Chain EVM address (0x...)');
+      return;
+    }
     if (!isValidAddress(clean)) {
       setError('Invalid wallet address format. Must be a 42-character hex address starting with 0x.');
       return;
     }
+    setError(null);
     setActiveAddress(clean);
   };
 
@@ -163,6 +191,7 @@ export default function App() {
         const clean = text.trim();
         setInputAddress(clean);
         if (isValidAddress(clean)) {
+          setError(null);
           setActiveAddress(clean);
         }
       }
@@ -171,8 +200,17 @@ export default function App() {
     }
   };
 
+  // Handle Clear / Reset to default landing page
+  const handleClear = () => {
+    setInputAddress('');
+    setActiveAddress('');
+    setDashboardData(null);
+    setError(null);
+  };
+
   // Handle Copy Address
   const handleCopyAddress = () => {
+    if (!activeAddress) return;
     navigator.clipboard.writeText(activeAddress);
     setCopiedAddr(true);
     setTimeout(() => setCopiedAddr(false), 2000);
@@ -190,7 +228,7 @@ export default function App() {
       {/* Top Protocol Header Bar */}
       <header className="navbar">
         <div className="nav-content">
-          <div className="brand-group">
+          <div className="brand-group" onClick={handleClear} style={{ cursor: 'pointer' }} title="Reset to Home">
             <ArcusLogo markSize={32} wordmarkHeight={25} color="#E8DDBE" />
             <div className="brand-badge-col">
               <span className="brand-tag">PERP DEX</span>
@@ -269,6 +307,16 @@ export default function App() {
                 onChange={(e) => setInputAddress(e.target.value)}
                 spellCheck="false"
               />
+              {inputAddress && (
+                <button
+                  type="button"
+                  className="clear-input-icon-btn"
+                  onClick={handleClear}
+                  title="Clear input"
+                >
+                  <X size={14} />
+                </button>
+              )}
               <button 
                 type="button" 
                 className="paste-action-btn"
@@ -294,7 +342,7 @@ export default function App() {
             </span>
             <div className="featured-pills-list">
               {FEATURED_WALLETS.map(fw => {
-                const isSelected = activeAddress.toLowerCase() === fw.address.toLowerCase();
+                const isSelected = activeAddress && activeAddress.toLowerCase() === fw.address.toLowerCase();
                 return (
                   <button
                     key={fw.address}
@@ -313,224 +361,354 @@ export default function App() {
           </div>
         </section>
 
-        {/* Current Active Wallet Meta Header */}
-        <section className="active-wallet-card">
-          <div className="wallet-avatar-col">
-            <div className="wallet-identicon" title="Arcus Account">
-              <ArcusMark size={26} color="#0F140D" />
-            </div>
-            <div className="wallet-meta-text">
-              <div className="wallet-address-row">
-                <span className="full-address font-mono">{activeAddress}</span>
-                <button 
-                  className="icon-chip-btn" 
-                  onClick={handleCopyAddress}
-                  title="Copy Wallet Address"
-                >
-                  {copiedAddr ? <Check size={13} className="text-green" /> : <Copy size={13} />}
-                  <span>{copiedAddr ? 'Copied' : 'Copy'}</span>
-                </button>
-                <button 
-                  className="icon-chip-btn" 
-                  onClick={handleShareLink}
-                  title="Share Dashboard Link"
-                >
-                  {copiedShare ? <Check size={13} className="text-green" /> : <Share2 size={13} />}
-                  <span>{copiedShare ? 'Link Copied' : 'Share'}</span>
-                </button>
-                <a 
-                  href={`https://explorer.robinhood.com/address/${activeAddress}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="icon-chip-btn"
-                  title="View on Robinhood Chain Explorer"
-                >
-                  <ExternalLink size={13} />
-                  <span>Explorer</span>
-                </a>
+        {/* DEFAULT LANDING: When no wallet address is selected */}
+        {!activeAddress && (
+          <section className="welcome-hero-container">
+            <div className="welcome-hero-card">
+              <div className="welcome-hero-top">
+                <div className="welcome-badge">
+                  <Sparkles size={13} className="text-lime" />
+                  <span>Robinhood Chain Perpetual DEX Analytics</span>
+                </div>
+                <h1 className="welcome-title font-serif">
+                  Inspect Any <span className="highlight-sand">Arcus Perpetual</span> Portfolio
+                </h1>
+                <p className="welcome-desc">
+                  Paste your EVM wallet address above to instantly inspect open perpetual positions,
+                  equity curves, historical PnL, execution fills, and funding cashflows directly from the live Arcus API.
+                </p>
               </div>
-              <div className="wallet-sub-badges">
-                <span className="subaccount-tag">Account Index: {dashboardData?.accountIndex ?? 0}</span>
-                <span className="tier-pill-gold">
-                  <Award size={12} />
-                  {dashboardData?.feeTier?.current?.name || 'Base'} Tier (Lv {dashboardData?.feeTier?.current?.level ?? 0})
-                </span>
-                {lastRefreshed && (
-                  <span className="refresh-time-tag">
-                    Synced {lastRefreshed.toLocaleTimeString()}
-                  </span>
-                )}
+
+              {/* Feature Value Props Grid */}
+              <div className="welcome-features-grid">
+                <div className="welcome-feat-item">
+                  <div className="feat-icon-box">
+                    <Layers size={22} className="text-lime" />
+                  </div>
+                  <h4>Open Positions & Risk</h4>
+                  <p>Real-time mark prices, leverage, notional size, and liquidation proximity across all perpetual markets.</p>
+                </div>
+
+                <div className="welcome-feat-item">
+                  <div className="feat-icon-box">
+                    <TrendingUp size={22} className="text-sand" />
+                  </div>
+                  <h4>Interactive PnL Curves</h4>
+                  <p>Toggle between portfolio equity ($) and cumulative PnL ($) across 24H, 7D, 30D, and All-Time with hover crosshairs.</p>
+                </div>
+
+                <div className="welcome-feat-item">
+                  <div className="feat-icon-box">
+                    <History size={22} className="text-lime" />
+                  </div>
+                  <h4>Trade Fills & Tax CSV</h4>
+                  <p>Every trade execution decoded with maker/taker liquidity status, fees, closed PnL, and 1-click CSV export.</p>
+                </div>
+
+                <div className="welcome-feat-item">
+                  <div className="feat-icon-box">
+                    <Zap size={22} className="text-sand" />
+                  </div>
+                  <h4>Funding & Collateral</h4>
+                  <p>Historical hourly funding rate cashflows, deposits, withdrawals, and margin health safety gauge.</p>
+                </div>
+              </div>
+
+              {/* Demo Trader Cards */}
+              <div className="welcome-demo-box">
+                <div className="demo-box-header">
+                  <div className="demo-title-group">
+                    <Trophy size={16} className="text-sand" />
+                    <span className="demo-box-title">Or test with top protocol traders:</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn-view-leaderboard"
+                    onClick={() => setLeaderboardModalOpen(true)}
+                  >
+                    <span>View Full Leaderboard →</span>
+                  </button>
+                </div>
+
+                <div className="demo-cards-row">
+                  {FEATURED_WALLETS.map(fw => (
+                    <div 
+                      key={fw.address} 
+                      className="demo-trader-card"
+                      onClick={() => {
+                        setInputAddress(fw.address);
+                        setActiveAddress(fw.address);
+                      }}
+                    >
+                      <div className="demo-trader-top">
+                        <span className="demo-trader-label">{fw.label}</span>
+                        <span className="demo-trader-badge">{fw.badge}</span>
+                      </div>
+                      <span className="demo-trader-addr font-mono">{truncateAddress(fw.address)}</span>
+                      <div className="demo-trader-action">
+                        <span>Inspect Wallet</span>
+                        <ArrowRight size={13} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Non-custodial Trust Notice */}
+              <div className="welcome-trust-note">
+                <ShieldCheck size={14} className="text-lime" />
+                <span>100% Non-Custodial & Read-Only — No wallet connection, signature approvals, or private keys required.</span>
               </div>
             </div>
-          </div>
-
-          <div className="wallet-cta-col">
-            <button 
-              className="refresh-btn-main"
-              onClick={() => loadDashboard(activeAddress, true)}
-              disabled={loading}
-            >
-              <RotateCw size={14} className={loading ? 'spin' : ''} />
-              <span>{loading ? 'Fetching API...' : 'Refresh Data'}</span>
-            </button>
-          </div>
-        </section>
-
-        {/* Error notification banner if any */}
-        {error && (
-          <div className="error-banner">
-            <AlertCircle size={18} className="error-icon" />
-            <div className="error-msg">
-              <strong>Account Notice:</strong> {error}
-            </div>
-            <button 
-              className="btn-retry-demo"
-              onClick={() => {
-                const demo = FEATURED_WALLETS[0].address;
-                setInputAddress(demo);
-                setActiveAddress(demo);
-              }}
-            >
-              Switch to #1 Whale Demo
-            </button>
-          </div>
+          </section>
         )}
 
-        {/* Core KPI Metric Cards */}
-        {dashboardData && (
-          <MetricCards data={dashboardData} />
+        {/* ACTIVE WALLET VIEW: Rendered once an address is entered */}
+        {activeAddress && (
+          <>
+            {/* Current Active Wallet Meta Header */}
+            <section className="active-wallet-card">
+              <div className="wallet-avatar-col">
+                <div className="wallet-identicon" title="Arcus Account">
+                  <ArcusMark size={26} color="#0F140D" />
+                </div>
+                <div className="wallet-meta-text">
+                  <div className="wallet-address-row">
+                    <span className="full-address font-mono">{activeAddress}</span>
+                    <button 
+                      className="icon-chip-btn" 
+                      onClick={handleCopyAddress}
+                      title="Copy Wallet Address"
+                    >
+                      {copiedAddr ? <Check size={13} className="text-green" /> : <Copy size={13} />}
+                      <span>{copiedAddr ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button 
+                      className="icon-chip-btn" 
+                      onClick={handleShareLink}
+                      title="Share Dashboard Link"
+                    >
+                      {copiedShare ? <Check size={13} className="text-green" /> : <Share2 size={13} />}
+                      <span>{copiedShare ? 'Link Copied' : 'Share'}</span>
+                    </button>
+                    <button 
+                      className="icon-chip-btn text-muted hover-sand"
+                      onClick={handleClear}
+                      title="Clear and return to home"
+                    >
+                      <X size={13} />
+                      <span>Clear</span>
+                    </button>
+                    <a 
+                      href={`https://explorer.robinhood.com/address/${activeAddress}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="icon-chip-btn"
+                      title="View on Robinhood Chain Explorer"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Explorer</span>
+                    </a>
+                  </div>
+                  <div className="wallet-sub-badges">
+                    <span className="subaccount-tag">Account Index: {dashboardData?.accountIndex ?? 0}</span>
+                    <span className="tier-pill-gold">
+                      <Award size={12} />
+                      {dashboardData?.feeTier?.current?.name || 'Base'} Tier (Lv {dashboardData?.feeTier?.current?.level ?? 0})
+                    </span>
+                    {lastRefreshed && (
+                      <span className="refresh-time-tag">
+                        Synced {lastRefreshed.toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="wallet-cta-col">
+                <button 
+                  className="refresh-btn-main"
+                  onClick={() => loadDashboard(activeAddress, true)}
+                  disabled={loading}
+                >
+                  <RotateCw size={14} className={loading ? 'spin' : ''} />
+                  <span>{loading ? 'Fetching API...' : 'Refresh Data'}</span>
+                </button>
+              </div>
+            </section>
+
+            {/* Error notification banner if any */}
+            {error && (
+              <div className="error-banner">
+                <AlertCircle size={18} className="error-icon" />
+                <div className="error-msg">
+                  <strong>Account Notice:</strong> {error}
+                </div>
+                <button 
+                  className="btn-retry-demo"
+                  onClick={() => {
+                    const demo = FEATURED_WALLETS[0].address;
+                    setInputAddress(demo);
+                    setActiveAddress(demo);
+                  }}
+                >
+                  Switch to #1 Whale Demo
+                </button>
+              </div>
+            )}
+
+            {/* Loading state skeleton/spinner */}
+            {loading && !dashboardData && (
+              <div className="loading-state-card">
+                <RotateCw size={36} className="spin text-sand" />
+                <div className="loading-state-title">Connecting to Arcus DEX API...</div>
+                <div className="loading-state-desc font-mono">
+                  Loading account balances, positions, executions, and return history for {truncateAddress(activeAddress)}
+                </div>
+              </div>
+            )}
+
+            {/* Core KPI Metric Cards */}
+            {dashboardData && (
+              <MetricCards data={dashboardData} />
+            )}
+
+            {/* Main Tabs Navigation */}
+            {dashboardData && (
+              <>
+                <div className="tabs-nav-bar">
+                  <button 
+                    className={`tab-item ${activeTab === 'overview' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('overview')}
+                  >
+                    <Activity size={15} />
+                    <span>Portfolio & PnL</span>
+                  </button>
+
+                  <button 
+                    className={`tab-item ${activeTab === 'positions' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('positions')}
+                  >
+                    <Layers size={15} />
+                    <span>Open Positions</span>
+                    {dashboardData?.positions?.length > 0 && (
+                      <span className="tab-counter">{dashboardData.positions.length}</span>
+                    )}
+                  </button>
+
+                  <button 
+                    className={`tab-item ${activeTab === 'trades' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('trades')}
+                  >
+                    <History size={15} />
+                    <span>Trade Fills</span>
+                    {dashboardData?.fills?.length > 0 && (
+                      <span className="tab-counter">{dashboardData.fills.length}</span>
+                    )}
+                  </button>
+
+                  <button 
+                    className={`tab-item ${activeTab === 'orders' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('orders')}
+                  >
+                    <Clock size={15} />
+                    <span>Orders</span>
+                    {dashboardData?.openOrders?.length > 0 && (
+                      <span className="tab-counter">{dashboardData.openOrders.length}</span>
+                    )}
+                  </button>
+
+                  <button 
+                    className={`tab-item ${activeTab === 'funding' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('funding')}
+                  >
+                    <Zap size={15} />
+                    <span>Funding History</span>
+                  </button>
+
+                  <button 
+                    className={`tab-item ${activeTab === 'transfers' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('transfers')}
+                  >
+                    <ShieldCheck size={15} />
+                    <span>Transfers & Deposits</span>
+                  </button>
+                </div>
+
+                {/* Tab Content Views */}
+                <div className="tab-content-area">
+                  {activeTab === 'overview' && (
+                    <div className="overview-stack">
+                      {/* Portfolio Interactive Chart */}
+                      <PortfolioChart 
+                        portfolio={dashboardData?.portfolio}
+                        currentEquity={dashboardData?.equity}
+                        totalUnrealizedPnl={dashboardData?.totalUnrealizedPnl}
+                      />
+
+                      {/* Positions Preview */}
+                      <div className="overview-section-header">
+                        <h3>Active Positions Overview</h3>
+                        <button className="link-action-btn" onClick={() => setActiveTab('positions')}>
+                          View all ({dashboardData?.positions?.length || 0}) →
+                        </button>
+                      </div>
+                      <PositionsTable 
+                        positions={dashboardData?.positions || []}
+                        marketsMap={dashboardData?.marketsMap || {}}
+                      />
+
+                      {/* Recent Fills Preview */}
+                      <div className="overview-section-header" style={{ marginTop: '24px' }}>
+                        <h3>Recent Executions</h3>
+                        <button className="link-action-btn" onClick={() => setActiveTab('trades')}>
+                          View all fills ({dashboardData?.fills?.length || 0}) →
+                        </button>
+                      </div>
+                      <TradesTable 
+                        fills={dashboardData?.fills?.slice(0, 10) || []}
+                        fillsStats={dashboardData?.fillsStats}
+                      />
+                    </div>
+                  )}
+
+                  {activeTab === 'positions' && (
+                    <PositionsTable 
+                      positions={dashboardData?.positions || []}
+                      marketsMap={dashboardData?.marketsMap || {}}
+                    />
+                  )}
+
+                  {activeTab === 'trades' && (
+                    <TradesTable 
+                      fills={dashboardData?.fills || []}
+                      fillsStats={dashboardData?.fillsStats}
+                    />
+                  )}
+
+                  {activeTab === 'orders' && (
+                    <OrdersTab 
+                      orders={dashboardData?.orders || []}
+                      openOrders={dashboardData?.openOrders || []}
+                    />
+                  )}
+
+                  {activeTab === 'funding' && (
+                    <FundingTab 
+                      funding={dashboardData?.funding || []}
+                    />
+                  )}
+
+                  {activeTab === 'transfers' && (
+                    <TransfersTab 
+                      transfers={dashboardData?.transfers || []}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </>
         )}
-
-        {/* Main Tabs Navigation */}
-        <div className="tabs-nav-bar">
-          <button 
-            className={`tab-item ${activeTab === 'overview' ? 'active' : ''}`}
-            onClick={() => setActiveTab('overview')}
-          >
-            <Activity size={15} />
-            <span>Portfolio & PnL</span>
-          </button>
-
-          <button 
-            className={`tab-item ${activeTab === 'positions' ? 'active' : ''}`}
-            onClick={() => setActiveTab('positions')}
-          >
-            <Layers size={15} />
-            <span>Open Positions</span>
-            {dashboardData?.positions?.length > 0 && (
-              <span className="tab-counter">{dashboardData.positions.length}</span>
-            )}
-          </button>
-
-          <button 
-            className={`tab-item ${activeTab === 'trades' ? 'active' : ''}`}
-            onClick={() => setActiveTab('trades')}
-          >
-            <History size={15} />
-            <span>Trade Fills</span>
-            {dashboardData?.fills?.length > 0 && (
-              <span className="tab-counter">{dashboardData.fills.length}</span>
-            )}
-          </button>
-
-          <button 
-            className={`tab-item ${activeTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveTab('orders')}
-          >
-            <Clock size={15} />
-            <span>Orders</span>
-            {dashboardData?.openOrders?.length > 0 && (
-              <span className="tab-counter">{dashboardData.openOrders.length}</span>
-            )}
-          </button>
-
-          <button 
-            className={`tab-item ${activeTab === 'funding' ? 'active' : ''}`}
-            onClick={() => setActiveTab('funding')}
-          >
-            <Zap size={15} />
-            <span>Funding History</span>
-          </button>
-
-          <button 
-            className={`tab-item ${activeTab === 'transfers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('transfers')}
-          >
-            <ShieldCheck size={15} />
-            <span>Transfers & Deposits</span>
-          </button>
-        </div>
-
-        {/* Tab Content Views */}
-        <div className="tab-content-area">
-          {activeTab === 'overview' && (
-            <div className="overview-stack">
-              {/* Portfolio Interactive Chart */}
-              <PortfolioChart 
-                portfolio={dashboardData?.portfolio}
-                currentEquity={dashboardData?.equity}
-                totalUnrealizedPnl={dashboardData?.totalUnrealizedPnl}
-              />
-
-              {/* Positions Preview */}
-              <div className="overview-section-header">
-                <h3>Active Positions Overview</h3>
-                <button className="link-action-btn" onClick={() => setActiveTab('positions')}>
-                  View all ({dashboardData?.positions?.length || 0}) →
-                </button>
-              </div>
-              <PositionsTable 
-                positions={dashboardData?.positions || []}
-                marketsMap={dashboardData?.marketsMap || {}}
-              />
-
-              {/* Recent Fills Preview */}
-              <div className="overview-section-header" style={{ marginTop: '24px' }}>
-                <h3>Recent Executions</h3>
-                <button className="link-action-btn" onClick={() => setActiveTab('trades')}>
-                  View all fills ({dashboardData?.fills?.length || 0}) →
-                </button>
-              </div>
-              <TradesTable 
-                fills={dashboardData?.fills?.slice(0, 10) || []}
-                fillsStats={dashboardData?.fillsStats}
-              />
-            </div>
-          )}
-
-          {activeTab === 'positions' && (
-            <PositionsTable 
-              positions={dashboardData?.positions || []}
-              marketsMap={dashboardData?.marketsMap || {}}
-            />
-          )}
-
-          {activeTab === 'trades' && (
-            <TradesTable 
-              fills={dashboardData?.fills || []}
-              fillsStats={dashboardData?.fillsStats}
-            />
-          )}
-
-          {activeTab === 'orders' && (
-            <OrdersTab 
-              orders={dashboardData?.orders || []}
-              openOrders={dashboardData?.openOrders || []}
-            />
-          )}
-
-          {activeTab === 'funding' && (
-            <FundingTab 
-              funding={dashboardData?.funding || []}
-            />
-          )}
-
-          {activeTab === 'transfers' && (
-            <TransfersTab 
-              transfers={dashboardData?.transfers || []}
-            />
-          )}
-        </div>
       </main>
 
       {/* Footer */}
