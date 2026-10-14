@@ -2,9 +2,37 @@ import React, { useState, useMemo, useRef } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Activity, BarChart2 } from 'lucide-react';
 import { formatUSD, formatPercent, formatTimestamp } from '../services/arcusApi';
 
-export default function PortfolioChart({ portfolio, currentEquity, totalUnrealizedPnl }) {
+export default function PortfolioChart({ 
+  portfolio, 
+  currentEquity, 
+  totalUnrealizedPnl,
+  timeframe: externalTimeframe,
+  onTimeframeChange: onExternalTimeframeChange
+}) {
   const [metricMode, setMetricMode] = useState('equity'); // 'equity' | 'pnl'
-  const [timeframe, setTimeframe] = useState('month'); // 'day' | 'week' | 'month' | 'all'
+
+  // Map external timeframe ('24h' | '7d' | '30d' | 'all') to internal ('day' | 'week' | 'month' | 'all')
+  const mappedInternalTf = useMemo(() => {
+    switch (externalTimeframe) {
+      case '24h': return 'day';
+      case '7d': return 'week';
+      case '30d': return 'month';
+      case 'all': return 'all';
+      default: return 'month';
+    }
+  }, [externalTimeframe]);
+
+  const [internalTimeframe, setInternalTimeframe] = useState('month');
+  const timeframe = externalTimeframe ? mappedInternalTf : internalTimeframe;
+
+  const handleTimeframeSelect = (tf) => {
+    setInternalTimeframe(tf);
+    if (onExternalTimeframeChange) {
+      const externalKey = tf === 'day' ? '24h' : tf === 'week' ? '7d' : tf === 'month' ? '30d' : 'all';
+      onExternalTimeframeChange(externalKey);
+    }
+  };
+
   const [hoverIndex, setHoverIndex] = useState(null);
   const containerRef = useRef(null);
 
@@ -205,7 +233,7 @@ export default function PortfolioChart({ portfolio, currentEquity, totalUnrealiz
               <button
                 key={tf.id}
                 className={`toggle-btn sm ${timeframe === tf.id ? 'active' : ''}`}
-                onClick={() => setTimeframe(tf.id)}
+                onClick={() => handleTimeframeSelect(tf.id)}
               >
                 {tf.label}
               </button>

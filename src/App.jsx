@@ -82,6 +82,9 @@ export default function App() {
   // Active tab state
   const [activeTab, setActiveTab] = useState('overview');
 
+  // Selected Analytics Timeframe ('24h' | '7d' | '30d' | 'all')
+  const [timeframe, setTimeframe] = useState('30d');
+
   // Modals
   const [feeModalOpen, setFeeModalOpen] = useState(false);
   const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
@@ -570,7 +573,11 @@ export default function App() {
 
             {/* Core KPI Metric Cards */}
             {dashboardData && (
-              <MetricCards data={dashboardData} />
+              <MetricCards 
+                data={dashboardData} 
+                timeframe={timeframe} 
+                onTimeframeChange={setTimeframe} 
+              />
             )}
 
             {/* Main Tabs Navigation */}
@@ -644,6 +651,8 @@ export default function App() {
                         portfolio={dashboardData?.portfolio}
                         currentEquity={dashboardData?.equity}
                         totalUnrealizedPnl={dashboardData?.totalUnrealizedPnl}
+                        timeframe={timeframe}
+                        onTimeframeChange={setTimeframe}
                       />
 
                       {/* Positions Preview */}

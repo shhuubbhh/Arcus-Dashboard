@@ -192,7 +192,8 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     fundingRes,
     transfersRes,
     marketsRes,
-    feeTiersRes
+    feeTiersRes,
+    leaderboard24hRes
   ] = await Promise.allSettled([
     apiGet(baseUrl, '/v1/account', { address: cleanAddr }),
     apiGet(baseUrl, '/v1/positions', { address: cleanAddr }),
@@ -204,7 +205,8 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     apiGet(baseUrl, '/v1/funding', { address: cleanAddr, limit: 50 }),
     apiGet(baseUrl, '/v1/accountTransferUpdates', { address: cleanAddr, limit: 50 }),
     apiGet(baseUrl, '/v1/markets'),
-    apiGet(baseUrl, '/v1/feetiers')
+    apiGet(baseUrl, '/v1/feetiers'),
+    apiGet(baseUrl, '/v1/leaderboard', { sortBy: 'volume', window: '24h', limit: 50 })
   ]);
 
   const account = accountRes.status === 'fulfilled' ? accountRes.value : null;
@@ -218,6 +220,10 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
   const transfers = transfersRes.status === 'fulfilled' ? transfersRes.value?.accountTransferUpdates || [] : [];
   const marketsList = marketsRes.status === 'fulfilled' ? marketsRes.value?.markets || [] : [];
   const feeTiers = feeTiersRes.status === 'fulfilled' ? feeTiersRes.value?.tiers || [] : [];
+  const leaderboard24hEntries = leaderboard24hRes.status === 'fulfilled' ? leaderboard24hRes.value?.entries || [] : [];
+
+  // Look for active wallet in 24h leaderboard
+  const lb24hMatch = leaderboard24hEntries.find(e => e.address?.toLowerCase() === cleanAddr.toLowerCase());
 
   // Create quick lookup maps
   const marketsMap = {};
@@ -252,17 +258,36 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     totalBorrowedCapital += borrowed;
   });
 
-  // Aggregate fill trade metrics
+  // Aggregate fill trade metrics & compute time-windowed fills metrics
   let totalClosedPnl = 0;
   let totalFillsFee = 0;
   let totalFillsVolume = 0;
   let makerFillsCount = 0;
   let takerFillsCount = 0;
 
+  let fillsVol24h = 0;
+  let fillsFee24h = 0;
+  let fillsPnl24h = 0;
+  let fillsCount24h = 0;
+
+  let fillsVol7d = 0;
+  let fillsFee7d = 0;
+  let fillsPnl7d = 0;
+  let fillsCount7d = 0;
+
+  let fillsVol30d = 0;
+  let fillsFee30d = 0;
+  let fillsPnl30d = 0;
+  let fillsCount30d = 0;
+
+  const nowUs = Date.now() * 1000;
+
   fills.forEach(fill => {
     const pnl = parseFloat(fill.closedPnl || 0);
     const fee = parseFloat(fill.fee || 0);
     const vol = parseFloat(fill.size || 0) * parseFloat(fill.price || 0);
+    const fillTs = Number(fill.createdAt || fill.timestamp || 0);
+    const ageUs = Math.max(0, nowUs - fillTs);
 
     totalClosedPnl += pnl;
     totalFillsFee += fee;
@@ -270,18 +295,32 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
 
     if (fill.role === 'MAKER') makerFillsCount++;
     else takerFillsCount++;
+
+    if (ageUs <= 24 * 3600 * 1e6) {
+      fillsVol24h += vol;
+      fillsFee24h += fee;
+      fillsPnl24h += pnl;
+      fillsCount24h++;
+    }
+    if (ageUs <= 7 * 86400 * 1e6) {
+      fillsVol7d += vol;
+      fillsFee7d += fee;
+      fillsPnl7d += pnl;
+      fillsCount7d++;
+    }
+    if (ageUs <= 30 * 86400 * 1e6) {
+      fillsVol30d += vol;
+      fillsFee30d += fee;
+      fillsPnl30d += pnl;
+      fillsCount30d++;
+    }
   });
 
   // Parse volume and fee metrics from stats endpoint (converting quote quantums)
   const windowed = stats?.windowedStats || {};
-  const volume24h = windowed['24h'] ? quantumToUsd(windowed['24h'].volume) : 0;
-  const volume7d = windowed['7d'] ? quantumToUsd(windowed['7d'].volume) : 0;
-  const volume30d = windowed['30d'] ? quantumToUsd(windowed['30d'].volume) : quantumToUsd(stats?.rollingVolume);
-  const lifetimeVolume = stats?.lifetimeVolume ? quantumToUsd(stats.lifetimeVolume) : (portfolio?.lifetimeVolume ? parseFloat(portfolio.lifetimeVolume) : totalFillsVolume);
-
-  const fees24h = windowed['24h'] ? quantumToUsd(windowed['24h'].feesPaid) : 0;
-  const fees7d = windowed['7d'] ? quantumToUsd(windowed['7d'].feesPaid) : 0;
-  const fees30d = windowed['30d'] ? quantumToUsd(windowed['30d'].feesPaid) : quantumToUsd(stats?.rollingFeesPaid);
+  const rollingVol = stats?.rollingVolume ? quantumToUsd(stats.rollingVolume) : 0;
+  const lifetimeVol = stats?.lifetimeVolume ? quantumToUsd(stats.lifetimeVolume) : (portfolio?.lifetimeVolume ? parseFloat(portfolio.lifetimeVolume) : totalFillsVolume);
+  const rollingFees = stats?.rollingFeesPaid ? quantumToUsd(stats.rollingFeesPaid) : 0;
   const lifetimeFees = stats?.lifetimeFeesPaid ? quantumToUsd(stats.lifetimeFeesPaid) : totalFillsFee;
 
   // Account balances
@@ -289,6 +328,103 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
   const equity = parseFloat(account?.equity || (netQuoteBalance + totalUnrealizedPnl));
   const freeCollateral = parseFloat(account?.freeCollateral || Math.max(0, equity - totalMarginUsed));
   const netDeposits = parseFloat(account?.netDeposits || 0);
+
+  // Extract Exact Timeframe PnL & Equity curves from Arcus portfolio dataset
+  const timeframeData = {
+    '24h': {
+      key: '24h',
+      label: '24 Hours',
+      shortLabel: '24H',
+      pnl: lb24hMatch ? quantumToUsd(lb24hMatch.pnl) : fillsPnl24h,
+      pnlPct: 0,
+      equityStart: equity,
+      equityEnd: equity,
+      volume: lb24hMatch ? quantumToUsd(lb24hMatch.volume) : (fillsVol24h > 0 ? fillsVol24h : (rollingVol / 30)),
+      fees: lb24hMatch ? quantumToUsd(lb24hMatch.feesPaid) : (fillsFee24h > 0 ? fillsFee24h : (rollingFees / 30)),
+      tradesCount: fillsCount24h
+    },
+    '7d': {
+      key: '7d',
+      label: '7 Days',
+      shortLabel: '7D',
+      pnl: fillsPnl7d,
+      pnlPct: 0,
+      equityStart: equity,
+      equityEnd: equity,
+      volume: fillsVol7d > 0 ? fillsVol7d : (rollingVol * (7 / 30)),
+      fees: fillsFee7d > 0 ? fillsFee7d : (rollingFees * (7 / 30)),
+      tradesCount: fillsCount7d
+    },
+    '30d': {
+      key: '30d',
+      label: '30 Days',
+      shortLabel: '30D',
+      pnl: totalUnrealizedPnl + totalClosedPnl,
+      pnlPct: 0,
+      equityStart: equity,
+      equityEnd: equity,
+      volume: rollingVol || fillsVol30d || totalFillsVolume,
+      fees: rollingFees || fillsFee30d || totalFillsFee,
+      tradesCount: fillsCount30d || fills.length
+    },
+    'all': {
+      key: 'all',
+      label: 'All Time',
+      shortLabel: 'ALL',
+      pnl: totalUnrealizedPnl + totalClosedPnl,
+      pnlPct: 0,
+      equityStart: equity,
+      equityEnd: equity,
+      volume: lifetimeVol || rollingVol || totalFillsVolume,
+      fees: lifetimeFees || rollingFees || totalFillsFee,
+      tradesCount: fills.length
+    }
+  };
+
+  // Supplement with official portfolio time-series rollups
+  if (portfolio && Array.isArray(portfolio.data)) {
+    const keyMap = {
+      '24h': 'totalDay',
+      '7d': 'totalWeek',
+      '30d': 'totalMonth',
+      'all': 'totalAll'
+    };
+
+    for (const [tf, portKey] of Object.entries(keyMap)) {
+      const entry = portfolio.data.find(item => item && item[0] === portKey)
+        || portfolio.data.find(item => item && item[0] === portKey.replace('total', 'perp'));
+
+      if (entry && entry[1]) {
+        const pnlPoints = entry[1].pnlHistory || [];
+        const eqPoints = entry[1].accountEquityHistory || [];
+
+        if (pnlPoints.length > 0) {
+          const firstPnl = parseFloat(pnlPoints[0][1] || 0);
+          const lastPnl = parseFloat(pnlPoints[pnlPoints.length - 1][1] || 0);
+          timeframeData[tf].pnl = lastPnl - firstPnl;
+        }
+
+        if (eqPoints.length > 0) {
+          const firstEq = parseFloat(eqPoints[0][1] || 0);
+          const lastEq = parseFloat(eqPoints[eqPoints.length - 1][1] || 0);
+          timeframeData[tf].equityStart = firstEq;
+          timeframeData[tf].equityEnd = lastEq;
+          const diff = lastEq - firstEq;
+          timeframeData[tf].pnlPct = firstEq > 0 ? (diff / firstEq) * 100 : 0;
+        }
+      }
+    }
+  }
+
+  // Volume & fee mappings
+  const volume24h = timeframeData['24h'].volume;
+  const volume7d = timeframeData['7d'].volume;
+  const volume30d = timeframeData['30d'].volume;
+  const lifetimeVolume = timeframeData['all'].volume;
+
+  const fees24h = timeframeData['24h'].fees;
+  const fees7d = timeframeData['7d'].fees;
+  const fees30d = timeframeData['30d'].fees;
 
   // Fee tier info
   const tierLevel = stats?.tradingFeeTier?.level ?? 0;
@@ -323,6 +459,7 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     totalMarginUsed,
     totalBorrowedCapital,
     marginHealthRatio: equity > 0 ? ((freeCollateral / equity) * 100) : 100,
+    timeframeData,
     volumes: {
       v24h: volume24h,
       v7d: volume7d,

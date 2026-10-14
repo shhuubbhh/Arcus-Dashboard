@@ -17,9 +17,11 @@ export default function TradesTable({ fills = [], fillsStats = {} }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sideFilter, setSideFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [timeframeFilter, setTimeframeFilter] = useState('ALL'); // 'ALL' | '24h' | '7d' | '30d'
   const [copiedId, setCopiedId] = useState(null);
 
   const filteredFills = useMemo(() => {
+    const nowUs = Date.now() * 1000;
     return fills.filter(fill => {
       const market = (fill.marketDisplayName || '').toUpperCase();
       const tradeId = (fill.tradeId || '').toLowerCase();
@@ -30,9 +32,21 @@ export default function TradesTable({ fills = [], fillsStats = {} }) {
       const matchesSide = sideFilter === 'ALL' || (fill.side || '').toUpperCase() === sideFilter;
       const matchesRole = roleFilter === 'ALL' || (fill.role || '').toUpperCase() === roleFilter;
 
-      return matchesSearch && matchesSide && matchesRole;
+      const fillTs = Number(fill.createdAt || fill.timestamp || 0);
+      const ageUs = Math.max(0, nowUs - fillTs);
+
+      let matchesTimeframe = true;
+      if (timeframeFilter === '24h') {
+        matchesTimeframe = ageUs <= 24 * 3600 * 1e6;
+      } else if (timeframeFilter === '7d') {
+        matchesTimeframe = ageUs <= 7 * 86400 * 1e6;
+      } else if (timeframeFilter === '30d') {
+        matchesTimeframe = ageUs <= 30 * 86400 * 1e6;
+      }
+
+      return matchesSearch && matchesSide && matchesRole && matchesTimeframe;
     });
-  }, [fills, searchTerm, sideFilter, roleFilter]);
+  }, [fills, searchTerm, sideFilter, roleFilter, timeframeFilter]);
 
   // Copy helper
   const handleCopy = (text, id) => {
@@ -113,6 +127,24 @@ export default function TradesTable({ fills = [], fillsStats = {} }) {
         </div>
 
         <div className="toolbar-right">
+          {/* Timeframe filter */}
+          <div className="btn-toggle-group sm">
+            {[
+              { id: 'ALL', label: 'All Time' },
+              { id: '24h', label: '24H' },
+              { id: '7d', label: '7D' },
+              { id: '30d', label: '30D' }
+            ].map(tf => (
+              <button
+                key={tf.id}
+                className={`toggle-btn sm ${timeframeFilter === tf.id ? 'active' : ''}`}
+                onClick={() => setTimeframeFilter(tf.id)}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+
           {/* Side filter */}
           <div className="btn-toggle-group sm">
             {['ALL', 'BUY', 'SELL'].map(s => (

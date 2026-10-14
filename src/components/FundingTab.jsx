@@ -1,11 +1,26 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DollarSign, Zap, TrendingUp, TrendingDown, Clock, Search } from 'lucide-react';
 import { formatUSD, formatTimestamp, formatRelativeTime, formatNumber, formatPercent } from '../services/arcusApi';
 
 export default function FundingTab({ funding = [] }) {
+  const [timeframeFilter, setTimeframeFilter] = useState('ALL'); // 'ALL' | '24h' | '7d' | '30d'
+
+  const filteredFunding = useMemo(() => {
+    const nowUs = Date.now() * 1000;
+    return funding.filter(f => {
+      const fTime = Number(f.time || 0);
+      const ageUs = Math.max(0, nowUs - fTime);
+
+      if (timeframeFilter === '24h') return ageUs <= 24 * 3600 * 1e6;
+      if (timeframeFilter === '7d') return ageUs <= 7 * 86400 * 1e6;
+      if (timeframeFilter === '30d') return ageUs <= 30 * 86400 * 1e6;
+      return true;
+    });
+  }, [funding, timeframeFilter]);
+
   const totalFunding = useMemo(() => {
-    return funding.reduce((acc, f) => acc + parseFloat(f.payment || 0), 0);
-  }, [funding]);
+    return filteredFunding.reduce((acc, f) => acc + parseFloat(f.payment || 0), 0);
+  }, [filteredFunding]);
 
   return (
     <div className="card table-card">
@@ -16,7 +31,7 @@ export default function FundingTab({ funding = [] }) {
               <Zap size={18} className="title-icon text-amber" />
               Funding Payment Cashflows
             </h3>
-            <span className="count-badge">{funding.length} Payments</span>
+            <span className="count-badge">{filteredFunding.length} Payments</span>
           </div>
 
           <div className="trades-summary-mini">
@@ -32,14 +47,33 @@ export default function FundingTab({ funding = [] }) {
             </div>
           </div>
         </div>
+
+        <div className="toolbar-right">
+          <div className="btn-toggle-group sm">
+            {[
+              { id: 'ALL', label: 'All Time' },
+              { id: '24h', label: '24H' },
+              { id: '7d', label: '7D' },
+              { id: '30d', label: '30D' }
+            ].map(tf => (
+              <button
+                key={tf.id}
+                className={`toggle-btn sm ${timeframeFilter === tf.id ? 'active' : ''}`}
+                onClick={() => setTimeframeFilter(tf.id)}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="table-responsive">
-        {funding.length === 0 ? (
+        {filteredFunding.length === 0 ? (
           <div className="empty-table-state">
             <Zap size={36} className="empty-icon text-amber" />
             <h4>No funding payment records</h4>
-            <p>This address has no recorded funding payments in the selected window.</p>
+            <p>This address has no recorded funding payments in the selected window ({timeframeFilter}).</p>
           </div>
         ) : (
           <table className="data-table">
@@ -54,7 +88,7 @@ export default function FundingTab({ funding = [] }) {
               </tr>
             </thead>
             <tbody>
-              {funding.map((f, idx) => {
+              {filteredFunding.map((f, idx) => {
                 const paymentNum = parseFloat(f.payment || 0);
                 const rateNum = parseFloat(f.fundingRate || 0);
                 const sizeNum = parseFloat(f.size || 0);
