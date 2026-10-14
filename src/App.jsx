@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
   Wallet, 
@@ -122,6 +122,10 @@ export default function App() {
     });
   }, [network.restUrl]);
 
+  // Reference to existing data for background refresh preservation
+  const dashboardDataRef = useRef(dashboardData);
+  dashboardDataRef.current = dashboardData;
+
   // Main data loader function
   const loadDashboard = useCallback(async (addrToLoad, showLoading = true) => {
     if (!addrToLoad || !isValidAddress(addrToLoad)) {
@@ -134,16 +138,20 @@ export default function App() {
     setError(null);
 
     try {
-      const data = await fetchCompleteWalletDashboard(addrToLoad, network.restUrl);
+      const existing = dashboardDataRef.current;
+      const data = await fetchCompleteWalletDashboard(addrToLoad, network.restUrl, existing);
       setDashboardData(data);
       setLastRefreshed(new Date());
       setLoading(false);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
-      if (err.status === 403) {
-        setError(`Address ${truncateAddress(addrToLoad)} has not been registered on Arcus or access is restricted. Try selecting one of the featured active traders.`);
-      } else {
-        setError(err.message || 'Error communicating with Arcus API. Please check your network or try again.');
+      // Only show blocking error if we don't have any cached data yet
+      if (!dashboardDataRef.current) {
+        if (err.status === 403) {
+          setError(`Address ${truncateAddress(addrToLoad)} has not been registered on Arcus or access is restricted. Try selecting one of the featured active traders.`);
+        } else {
+          setError(err.message || 'Error communicating with Arcus API. Please check your network or try again.');
+        }
       }
       setLoading(false);
     }
@@ -160,12 +168,12 @@ export default function App() {
     }
   }, [activeAddress, networkKey, loadDashboard]);
 
-  // Auto-refresh interval (every 15s) only when active address exists
+  // Auto-refresh interval (every 45s) only when active address exists
   useEffect(() => {
     if (!autoRefresh || !activeAddress) return;
     const interval = setInterval(() => {
       loadDashboard(activeAddress, false);
-    }, 15000);
+    }, 45000);
     return () => clearInterval(interval);
   }, [autoRefresh, activeAddress, loadDashboard]);
 
@@ -183,6 +191,10 @@ export default function App() {
       return;
     }
     setError(null);
+    if (clean.toLowerCase() !== activeAddress.toLowerCase()) {
+      setDashboardData(null);
+      setLoading(true);
+    }
     setActiveAddress(clean);
   };
 
@@ -195,6 +207,10 @@ export default function App() {
         setInputAddress(clean);
         if (isValidAddress(clean)) {
           setError(null);
+          if (clean.toLowerCase() !== activeAddress.toLowerCase()) {
+            setDashboardData(null);
+            setLoading(true);
+          }
           setActiveAddress(clean);
         }
       }

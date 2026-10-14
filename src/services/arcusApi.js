@@ -141,8 +141,23 @@ export function isValidAddress(address) {
   return typeof address === 'string' && /^0x[a-fA-F0-9]{40}$/.test(address.trim());
 }
 
-// Low-level fetch wrapper with error handling
-async function apiGet(baseUrl, path, params = {}) {
+// In-memory cache for static/semi-static protocol endpoints
+const apiCache = new Map();
+
+function getCachedData(key, maxAgeMs) {
+  const item = apiCache.get(key);
+  if (item && (Date.now() - item.ts) < maxAgeMs) {
+    return item.data;
+  }
+  return null;
+}
+
+function setCachedData(key, data) {
+  apiCache.set(key, { ts: Date.now(), data });
+}
+
+// Low-level fetch wrapper with exponential backoff & rate limit protection
+async function apiGet(baseUrl, path, params = {}, retries = 2, delayMs = 800) {
   const url = new URL(baseUrl + path);
   Object.entries(params).forEach(([key, val]) => {
     if (val !== undefined && val !== null && val !== '') {
@@ -150,37 +165,91 @@ async function apiGet(baseUrl, path, params = {}) {
     }
   });
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json'
-    }
-  });
+  const urlStr = url.toString();
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let parsedError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      parsedError = JSON.parse(errorText);
-    } catch {
-      parsedError = { error: errorText || `HTTP ${response.status} ${response.statusText}` };
-    }
-    const err = new Error(parsedError.error || `HTTP error ${response.status}`);
-    err.status = response.status;
-    err.data = parsedError;
-    throw err;
-  }
+      const response = await fetch(urlStr, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
 
-  return response.json();
+      if (response.status === 429) {
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+          continue;
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let parsedError;
+        try {
+          parsedError = JSON.parse(errorText);
+        } catch {
+          parsedError = { error: errorText || `HTTP ${response.status} ${response.statusText}` };
+        }
+        const err = new Error(parsedError.error || `HTTP error ${response.status}`);
+        err.status = response.status;
+        err.data = parsedError;
+        throw err;
+      }
+
+      return await response.json();
+    } catch (err) {
+      if (attempt < retries && (err.status === 429 || err.name === 'TypeError')) {
+        await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /**
- * Fetch all data for an address in parallel with resilient error isolation
+ * Fetch all data for an address in parallel with resilient error isolation & state preservation
  */
-export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.mainnet.restUrl) {
+export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.mainnet.restUrl, existingData = null) {
   const cleanAddr = address.trim().toLowerCase();
+  const isSameAddress = Boolean(existingData && existingData.address?.toLowerCase() === cleanAddr);
 
-  // Primary requests run concurrently
+  // Cached static protocol resources
+  let marketsPromise;
+  const cachedMarkets = getCachedData(`${baseUrl}_markets`, 300000);
+  if (cachedMarkets) {
+    marketsPromise = Promise.resolve(cachedMarkets);
+  } else {
+    marketsPromise = apiGet(baseUrl, '/v1/markets').then(res => {
+      setCachedData(`${baseUrl}_markets`, res);
+      return res;
+    }).catch(() => existingData?.allMarkets ? { markets: existingData.allMarkets } : null);
+  }
+
+  let feeTiersPromise;
+  const cachedFeeTiers = getCachedData(`${baseUrl}_feetiers`, 300000);
+  if (cachedFeeTiers) {
+    feeTiersPromise = Promise.resolve(cachedFeeTiers);
+  } else {
+    feeTiersPromise = apiGet(baseUrl, '/v1/feetiers').then(res => {
+      setCachedData(`${baseUrl}_feetiers`, res);
+      return res;
+    }).catch(() => existingData?.feeTiers ? { tiers: existingData.feeTiers } : null);
+  }
+
+  let leaderboardPromise;
+  const cachedLb = getCachedData(`${baseUrl}_lb24h`, 120000);
+  if (cachedLb) {
+    leaderboardPromise = Promise.resolve(cachedLb);
+  } else {
+    leaderboardPromise = apiGet(baseUrl, '/v1/leaderboard', { sortBy: 'volume', window: '24h', limit: 50 }).then(res => {
+      setCachedData(`${baseUrl}_lb24h`, res);
+      return res;
+    }).catch(() => null);
+  }
+
+  // Primary requests run concurrently with resilient fallbacks
   const [
     accountRes,
     positionsRes,
@@ -204,23 +273,59 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     apiGet(baseUrl, '/v1/openOrders', { address: cleanAddr }),
     apiGet(baseUrl, '/v1/funding', { address: cleanAddr, limit: 50 }),
     apiGet(baseUrl, '/v1/accountTransferUpdates', { address: cleanAddr, limit: 50 }),
-    apiGet(baseUrl, '/v1/markets'),
-    apiGet(baseUrl, '/v1/feetiers'),
-    apiGet(baseUrl, '/v1/leaderboard', { sortBy: 'volume', window: '24h', limit: 50 })
+    marketsPromise,
+    feeTiersPromise,
+    leaderboardPromise
   ]);
 
-  const account = accountRes.status === 'fulfilled' ? accountRes.value : null;
-  const positionsData = positionsRes.status === 'fulfilled' ? positionsRes.value : null;
-  const stats = statsRes.status === 'fulfilled' ? statsRes.value : null;
-  const portfolio = portfolioRes.status === 'fulfilled' ? portfolioRes.value : null;
-  const fills = fillsRes.status === 'fulfilled' ? fillsRes.value?.fills || [] : [];
-  const orders = ordersRes.status === 'fulfilled' ? ordersRes.value?.orders || [] : [];
-  const openOrders = openOrdersRes.status === 'fulfilled' ? openOrdersRes.value?.orders || [] : [];
-  const funding = fundingRes.status === 'fulfilled' ? fundingRes.value?.fundingPayments || [] : [];
-  const transfers = transfersRes.status === 'fulfilled' ? transfersRes.value?.accountTransferUpdates || [] : [];
-  const marketsList = marketsRes.status === 'fulfilled' ? marketsRes.value?.markets || [] : [];
-  const feeTiers = feeTiersRes.status === 'fulfilled' ? feeTiersRes.value?.tiers || [] : [];
-  const leaderboard24hEntries = leaderboard24hRes.status === 'fulfilled' ? leaderboard24hRes.value?.entries || [] : [];
+  // Gracefully fallback to existingData if an endpoint was rate-limited on auto-refresh
+  const account = accountRes.status === 'fulfilled' && accountRes.value 
+    ? accountRes.value 
+    : (isSameAddress ? existingData?.account : null);
+
+  const positionsData = positionsRes.status === 'fulfilled' && positionsRes.value 
+    ? positionsRes.value 
+    : (isSameAddress ? existingData?.positionsRaw : null);
+
+  const stats = statsRes.status === 'fulfilled' && statsRes.value 
+    ? statsRes.value 
+    : (isSameAddress ? existingData?.rawStats : null);
+
+  const portfolio = portfolioRes.status === 'fulfilled' && portfolioRes.value 
+    ? portfolioRes.value 
+    : (isSameAddress ? existingData?.portfolio : null);
+
+  const fills = fillsRes.status === 'fulfilled' && fillsRes.value?.fills
+    ? fillsRes.value.fills
+    : (isSameAddress ? (existingData?.fills || []) : []);
+
+  const orders = ordersRes.status === 'fulfilled' && ordersRes.value?.orders
+    ? ordersRes.value.orders
+    : (isSameAddress ? (existingData?.orders || []) : []);
+
+  const openOrders = openOrdersRes.status === 'fulfilled' && openOrdersRes.value?.orders
+    ? openOrdersRes.value.orders
+    : (isSameAddress ? (existingData?.openOrders || []) : []);
+
+  const funding = fundingRes.status === 'fulfilled' && fundingRes.value?.fundingPayments
+    ? fundingRes.value.fundingPayments
+    : (isSameAddress ? (existingData?.funding || []) : []);
+
+  const transfers = transfersRes.status === 'fulfilled' && transfersRes.value?.accountTransferUpdates
+    ? transfersRes.value.accountTransferUpdates
+    : (isSameAddress ? (existingData?.transfers || []) : []);
+
+  const marketsList = marketsRes.status === 'fulfilled' && marketsRes.value?.markets
+    ? marketsRes.value.markets
+    : (existingData?.allMarkets || []);
+
+  const feeTiers = feeTiersRes.status === 'fulfilled' && feeTiersRes.value?.tiers
+    ? feeTiersRes.value.tiers
+    : (existingData?.feeTiers || []);
+
+  const leaderboard24hEntries = leaderboard24hRes.status === 'fulfilled' && leaderboard24hRes.value?.entries
+    ? leaderboard24hRes.value.entries
+    : [];
 
   // Look for active wallet in 24h leaderboard
   const lb24hMatch = leaderboard24hEntries.find(e => e.address?.toLowerCase() === cleanAddr.toLowerCase());
@@ -449,6 +554,8 @@ export async function fetchCompleteWalletDashboard(address, baseUrl = NETWORKS.m
     accountIndex: account?.accountIndex ?? 0,
     timestamp: Date.now(),
     account,
+    rawStats: stats,
+    positionsRaw: positionsData,
     equity,
     netQuoteBalance,
     freeCollateral,
