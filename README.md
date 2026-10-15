@@ -11,15 +11,12 @@ Built in strict accordance with the official **[Arcus Brand Kit](https://arcus.x
 - **Instant Wallet Inspection**: Paste any EVM wallet address (or choose top protocol whales from the built-in live leaderboard) to inspect on-chain trading activity.
 - **Direct Live API Integration**: Communicates directly with the Arcus production API (`https://api.arcus.xyz/v1/`) with zero intermediary proxy bottlenecks (Arcus natively supports CORS `*`).
 - **Exact Quantums Precision**: Accurately decodes Arcus 64-bit quote quantums ($10^{-9}$ precision where `1e9 = $1.00 USD`) for volume, fees, collateral, and cash flows.
-- **6 Core KPI Metric Cards**:
+- **5 Core KPI Cards**:
   - **Portfolio Value (Equity)**: Real-time net collateral, available margin, and maintenance requirement.
   - **Total Return (PnL)**: Combined Unrealized + Realized return with percentage ROI.
   - **Volume Breakdown**: 30-Day, 24-Hour, and Lifetime notional trading volumes.
   - **Fees & VIP Tier**: Total trading fees paid with VIP fee tier progress and maker/taker rebate schedules.
   - **Margin Health**: Color-coded margin safety gauge and liquidation proximity meter.
-  - **Weekly Points & Rewards**: Real-time estimated and authenticated Season 1 weekly points allocation, reward tier (Diamond/Platinum/Gold/Silver/Bronze), and next drop countdown timer.
-- **Arcus Weekly Points & Rewards Ledger Tab**: Dedicated tab featuring live countdown to Wednesday 19:00 UTC drop, 4 points KPI cards, 3-week distribution history table, and optional Privy token verification.
-- **Protocol Leaderboard with Weekly Points Column**: Browse top traders with estimated weekly points share alongside notional volume, net PnL, and fees paid.
 - **Interactive Performance Chart**: Custom SVG chart with dynamic hover crosshairs and tooltips toggling between **Equity Curve ($)** and **Cumulative PnL ($)** across `24H`, `7D`, `30D`, and `ALL` timeframes.
 - **Open Perpetual Positions Table**: Sortable and filterable positions with market symbol, leverage, side (Long/Short), notional position size, entry price, mark price, est. liquidation price, and unrealized ROI.
 - **Trade Execution History & CSV Export**: Detailed log of past trade fills including execution price, closed PnL, fees paid, liquidity role (Maker/Taker), and timestamp, with one-click **CSV export** for accounting and tax reporting.
@@ -118,9 +115,6 @@ The dashboard directly utilizes the following public Arcus DEX endpoints:
 | `GET /v1/markets` | All perpetual contracts, mark prices, funding rates, and 24h stats |
 | `GET /v1/feetiers` | Maker/Taker fee tier breakdown and volume brackets |
 | `GET /v1/leaderboard` | Top protocol traders ranked by volume and performance |
-| `GET https://points-api.arcus.xyz/v1/meta` | Live Season 1 rewards metadata, current drop schedule, and pool statistics |
-| `GET https://points-api.arcus.xyz/v1/points/{address}` | Authenticated user points, tier, and weekly drop history (requires `privy-id-token`) |
-| `GET https://points-api.arcus.xyz/v1/leaderboard` | Season 1 points leaderboard rankings and anonymous codenames |
 
 ---
 
