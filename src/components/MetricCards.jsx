@@ -10,11 +10,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Clock,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react';
-import { formatUSD, formatPercent } from '../services/arcusApi';
+import { formatUSD, formatPercent, formatPoints } from '../services/arcusApi';
 
-export default function MetricCards({ data, timeframe = '30d', onTimeframeChange }) {
+export default function MetricCards({ data, timeframe = '30d', onTimeframeChange, onSelectPointsTab }) {
   if (!data) return null;
 
   const {
@@ -30,7 +31,8 @@ export default function MetricCards({ data, timeframe = '30d', onTimeframeChange
     timeframeData = {},
     volumes = {},
     fees = {},
-    feeTier = {}
+    feeTier = {},
+    points = {}
   } = data;
 
   const activeTf = timeframeData[timeframe] || timeframeData['30d'] || {
@@ -217,6 +219,37 @@ export default function MetricCards({ data, timeframe = '30d', onTimeframeChange
           <div className="metric-footer">
             <span className="footer-label">Open Position Notional:</span>
             <span className="footer-val font-mono">{formatUSD(totalPositionNotional)}</span>
+          </div>
+        </div>
+
+        {/* 6. Arcus Weekly Points & Rewards */}
+        <div 
+          className="metric-card glow-lime metric-card-interactive"
+          onClick={() => onSelectPointsTab && onSelectPointsTab()}
+          title="Click to view Arcus Points Breakdown & Rewards Schedule"
+        >
+          <div className="metric-header">
+            <div className="metric-icon-wrap lime">
+              <Sparkles size={18} />
+            </div>
+            <span className="metric-tag">Weekly Points</span>
+          </div>
+          <div className="metric-body">
+            <div className="metric-value font-mono text-lime">
+              {formatPoints(points?.weeklyPoints || 0)}
+            </div>
+            <div className="metric-sub-row">
+              <span className="metric-label">{points?.season || 'Season 1'} Tier:</span>
+              <span className={`tier-badge-xs tier-${(points?.tier || 'Bronze').toLowerCase()}`}>
+                {points?.tier || 'Bronze'}
+              </span>
+            </div>
+          </div>
+          <div className="metric-footer">
+            <span className="footer-label">Next Drop:</span>
+            <span className="footer-val font-mono">
+              Wed 19:00 UTC (250k Pool)
+            </span>
           </div>
         </div>
       </div>

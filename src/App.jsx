@@ -29,7 +29,8 @@ import {
   fetchCompleteWalletDashboard, 
   fetchLiveMarkets, 
   isValidAddress, 
-  truncateAddress 
+  truncateAddress,
+  formatPoints 
 } from './services/arcusApi';
 
 import MetricCards from './components/MetricCards';
@@ -39,6 +40,7 @@ import TradesTable from './components/TradesTable';
 import OrdersTab from './components/OrdersTab';
 import FundingTab from './components/FundingTab';
 import TransfersTab from './components/TransfersTab';
+import PointsTab from './components/PointsTab';
 import MarketTicker from './components/MarketTicker';
 import FeeTierModal from './components/FeeTierModal';
 import LeaderboardModal from './components/LeaderboardModal';
@@ -535,6 +537,16 @@ export default function App() {
                       <Award size={12} />
                       {dashboardData?.feeTier?.current?.name || 'Base'} Tier (Lv {dashboardData?.feeTier?.current?.level ?? 0})
                     </span>
+                    <button 
+                      type="button"
+                      className="points-pill-lime"
+                      onClick={() => setActiveTab('points')}
+                      title="View Arcus Weekly Points & Rewards Breakdown"
+                    >
+                      <Sparkles size={12} className="text-lime" />
+                      <span>{formatPoints(dashboardData?.points?.weeklyPoints || 0)} / wk</span>
+                      <span className="points-tier-tag">({dashboardData?.points?.tier || 'Bronze'})</span>
+                    </button>
                     {lastRefreshed && (
                       <span className="refresh-time-tag">
                         Synced {lastRefreshed.toLocaleTimeString()}
@@ -593,6 +605,7 @@ export default function App() {
                 data={dashboardData} 
                 timeframe={timeframe} 
                 onTimeframeChange={setTimeframe} 
+                onSelectPointsTab={() => setActiveTab('points')}
               />
             )}
 
@@ -650,6 +663,17 @@ export default function App() {
                   </button>
 
                   <button 
+                    className={`tab-item ${activeTab === 'points' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('points')}
+                  >
+                    <Sparkles size={15} className="text-lime" />
+                    <span>Arcus Points</span>
+                    <span className="tab-counter points-counter">
+                      {formatPoints(dashboardData?.points?.weeklyPoints || 0)}
+                    </span>
+                  </button>
+
+                  <button 
                     className={`tab-item ${activeTab === 'transfers' ? 'active' : ''}`}
                     onClick={() => setActiveTab('transfers')}
                   >
@@ -670,6 +694,26 @@ export default function App() {
                         timeframe={timeframe}
                         onTimeframeChange={setTimeframe}
                       />
+
+                      {/* Arcus Weekly Points Overview Spotlight */}
+                      <div className="points-spotlight-bar" onClick={() => setActiveTab('points')}>
+                        <div className="spotlight-left">
+                          <div className="spotlight-icon-wrap">
+                            <Sparkles size={18} className="text-lime" />
+                          </div>
+                          <div className="spotlight-text">
+                            <span className="spotlight-title">
+                              Arcus Season 1 Weekly Reward: <strong>{formatPoints(dashboardData?.points?.weeklyPoints || 0)}</strong>
+                            </span>
+                            <span className="spotlight-sub">
+                              Reward Tier: <span className={`tier-badge-xs tier-${(dashboardData?.points?.tier || 'Bronze').toLowerCase()}`}>{dashboardData?.points?.tier || 'Bronze'}</span> • 250,000 pts pool drops every Wednesday at 19:00 UTC
+                            </span>
+                          </div>
+                        </div>
+                        <button type="button" className="spotlight-cta">
+                          <span>View Full Points Ledger →</span>
+                        </button>
+                      </div>
 
                       {/* Positions Preview */}
                       <div className="overview-section-header">
@@ -695,6 +739,15 @@ export default function App() {
                         fillsStats={dashboardData?.fillsStats}
                       />
                     </div>
+                  )}
+
+                  {activeTab === 'points' && (
+                    <PointsTab 
+                      data={dashboardData}
+                      onPrivyTokenUpdate={() => {
+                        loadDashboard(activeAddress, false);
+                      }}
+                    />
                   )}
 
                   {activeTab === 'positions' && (

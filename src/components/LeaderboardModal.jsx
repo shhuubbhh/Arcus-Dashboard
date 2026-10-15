@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, Activity, X, ExternalLink, ChevronRight, Check } from 'lucide-react';
-import { fetchLeaderboard, formatUSD, truncateAddress } from '../services/arcusApi';
+import { Trophy, TrendingUp, Activity, X, ExternalLink, ChevronRight, Check, Sparkles } from 'lucide-react';
+import { fetchLeaderboard, formatUSD, formatPoints, estimateWeeklyPoints, truncateAddress } from '../services/arcusApi';
 
 export default function LeaderboardModal({ isOpen, onClose, onSelectAddress, currentAddress, baseUrl }) {
   const [sortBy, setSortBy] = useState('volume'); // 'volume' | 'pnl'
@@ -100,6 +100,7 @@ export default function LeaderboardModal({ isOpen, onClose, onSelectAddress, cur
                   <th>Volume</th>
                   <th>Net PnL</th>
                   <th>Fees Paid</th>
+                  <th>Weekly Points</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -108,6 +109,11 @@ export default function LeaderboardModal({ isOpen, onClose, onSelectAddress, cur
                   const rank = entry.rank || idx + 1;
                   const isCurrent = (entry.address || '').toLowerCase() === (currentAddress || '').toLowerCase();
                   const pnlNum = entry.formattedPnl || 0;
+                  const scaleDays = windowTime === '24h' ? 1 : windowTime === 'all' ? 60 : 30;
+                  const estWeeklyPoints = estimateWeeklyPoints(
+                    entry.formattedVolume * (7 / scaleDays),
+                    entry.formattedFees * (7 / scaleDays)
+                  );
 
                   return (
                     <tr 
@@ -140,6 +146,14 @@ export default function LeaderboardModal({ isOpen, onClose, onSelectAddress, cur
                       </td>
                       <td>
                         <span className="font-mono text-muted">{formatUSD(entry.formattedFees)}</span>
+                      </td>
+                      <td>
+                        <div className="val-subval-cell">
+                          <span className="font-mono font-bold text-lime">
+                            {formatPoints(estWeeklyPoints)}
+                          </span>
+                          <span className="text-xs text-muted font-mono">Est. / wk</span>
+                        </div>
                       </td>
                       <td>
                         <button className="action-select-btn">
